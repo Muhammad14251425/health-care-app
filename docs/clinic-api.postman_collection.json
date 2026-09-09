@@ -1,0 +1,664 @@
+{
+  "info": {
+    "name": "Clinic Platform API v1 (clinic_core)",
+    "description": "Development collection for the clinic_core API layer on Frappe v16 + ERPNext v16 + Marley Healthcare v16.\n\nBase URL default: http://localhost:8000\n\nAUTH: run 'Auth / Login (Admin)' first. Frappe sets the sid cookie, which Postman reuses automatically for later requests. Change the {{user}}/{{password}} variables to test other personas.\n\nAll responses are wrapped by Frappe in a 'message' key:\n  { \"message\": { \"success\": true, \"data\": {...}, \"message\": null } }\n\nTEST CREDENTIALS ONLY - never real patient data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "api", "value": "{{base_url}}/api/method/clinic_core.api.v1" },
+    { "key": "password", "value": "TestPass123!" },
+    { "key": "admin_user", "value": "admin.clinic@test.local" },
+    { "key": "reception_user", "value": "reception@test.local" },
+    { "key": "doctor_user", "value": "doctor@test.local" },
+    { "key": "patient_a_user", "value": "patienta@test.local" },
+    { "key": "patient_b_user", "value": "patientb@test.local" },
+    { "key": "patient", "value": "Test Patient A" },
+    { "key": "practitioner", "value": "Dr Test Doctor" },
+    { "key": "appointment", "value": "" },
+    { "key": "encounter", "value": "" },
+    { "key": "invoice", "value": "" },
+    { "key": "appointment_date", "value": "2026-09-24" },
+    { "key": "appointment_time", "value": "11:00:00" }
+  ],
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Ping (no auth)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/method/ping", "host": ["{{base_url}}"], "path": ["api", "method", "ping"] },
+            "description": "Liveness probe. Expect {\"message\":\"pong\"}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "pm.test('login succeeded', () => pm.expect(b.success).to.be.true);",
+                  "pm.test('has persona', () => pm.expect(b.data).to.have.property('persona'));",
+                  "console.log('persona:', b.data.persona, 'roles:', b.data.roles);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"usr\": \"{{admin_user}}\",\n  \"pwd\": \"{{password}}\"\n}" },
+            "url": { "raw": "{{api}}.auth.login", "host": ["{{api}}.auth.login"] },
+            "description": "Establishes a session. Sets the sid cookie used by every later request."
+          }
+        },
+        {
+          "name": "Login (Receptionist)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"usr\": \"{{reception_user}}\",\n  \"pwd\": \"{{password}}\"\n}" },
+            "url": { "raw": "{{api}}.auth.login", "host": ["{{api}}.auth.login"] }
+          }
+        },
+        {
+          "name": "Login (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"usr\": \"{{doctor_user}}\",\n  \"pwd\": \"{{password}}\"\n}" },
+            "url": { "raw": "{{api}}.auth.login", "host": ["{{api}}.auth.login"] }
+          }
+        },
+        {
+          "name": "Login (Patient A)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"usr\": \"{{patient_a_user}}\",\n  \"pwd\": \"{{password}}\"\n}" },
+            "url": { "raw": "{{api}}.auth.login", "host": ["{{api}}.auth.login"] }
+          }
+        },
+        {
+          "name": "Login (bad credentials -> 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "pm.test('rejected', () => pm.expect(b.success).to.be.false);",
+                  "pm.test('generic message (no account enumeration)', () =>",
+                  "  pm.expect(b.error.message).to.include('Invalid credentials'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"usr\": \"{{admin_user}}\",\n  \"pwd\": \"wrong-password\"\n}" },
+            "url": { "raw": "{{api}}.auth.login", "host": ["{{api}}.auth.login"] }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.auth.me", "host": ["{{api}}.auth.me"] },
+            "description": "Current user, roles, persona, linked patient/practitioner."
+          }
+        },
+        {
+          "name": "Session valid",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.auth.session_valid", "host": ["{{api}}.auth.session_valid"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.auth.logout", "host": ["{{api}}.auth.logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Patients",
+      "item": [
+        {
+          "name": "List / search patients (STAFF)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"search\": \"Test\",\n  \"limit\": 20,\n  \"start\": 0\n}" },
+            "url": { "raw": "{{api}}.patients.list_patients", "host": ["{{api}}.patients.list_patients"] },
+            "description": "Staff only. A Patient-role caller receives FORBIDDEN."
+          }
+        },
+        {
+          "name": "Get patient",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.patients.get_patient", "host": ["{{api}}.patients.get_patient"] },
+            "description": "Omit 'patient' as a Patient user to fetch your own record."
+          }
+        },
+        {
+          "name": "Create patient (STAFF)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"first_name\": \"Test Patient C\",\n    \"sex\": \"Female\",\n    \"dob\": \"1995-03-10\",\n    \"mobile\": \"+923009998877\",\n    \"email\": \"patientc@test.local\"\n  }\n}" },
+            "url": { "raw": "{{api}}.patients.create_patient", "host": ["{{api}}.patients.create_patient"] },
+            "description": "Returns possible_duplicates when the mobile matches an existing patient."
+          }
+        },
+        {
+          "name": "Update patient (contact fields only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\",\n  \"payload\": {\n    \"mobile\": \"+923001112233\",\n    \"blood_group\": \"O+\"\n  }\n}" },
+            "url": { "raw": "{{api}}.patients.update_patient", "host": ["{{api}}.patients.update_patient"] },
+            "description": "Allowlist: mobile, email, phone, blood_group. user_id/status/customer are NOT settable."
+          }
+        },
+        {
+          "name": "Visit history",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.patients.visit_history", "host": ["{{api}}.patients.visit_history"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Practitioners",
+      "item": [
+        {
+          "name": "List practitioners",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.practitioners.list_practitioners", "host": ["{{api}}.practitioners.list_practitioners"] }
+          }
+        },
+        {
+          "name": "Get practitioner",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"practitioner\": \"{{practitioner}}\"\n}" },
+            "url": { "raw": "{{api}}.practitioners.get_practitioner", "host": ["{{api}}.practitioners.get_practitioner"] }
+          }
+        },
+        {
+          "name": "List departments",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.practitioners.list_departments", "host": ["{{api}}.practitioners.list_departments"] }
+          }
+        },
+        {
+          "name": "Availability (weekly pattern)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"practitioner\": \"{{practitioner}}\"\n}" },
+            "url": { "raw": "{{api}}.practitioners.availability", "host": ["{{api}}.practitioners.availability"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Appointments",
+      "item": [
+        {
+          "name": "Available slots",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"practitioner\": \"{{practitioner}}\",\n  \"date\": \"{{appointment_date}}\"\n}" },
+            "url": { "raw": "{{api}}.appointments.available_slots", "host": ["{{api}}.appointments.available_slots"] },
+            "description": "Delegates to Marley's get_availability_data. When unavailable, returns success:true with available:false and an explanatory message."
+          }
+        },
+        {
+          "name": "Create appointment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) { pm.collectionVariables.set('appointment', b.data.name);",
+                  "  console.log('appointment:', b.data.name); }",
+                  "else { console.log('error:', b.error.code, b.error.message); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"patient\": \"{{patient}}\",\n    \"practitioner\": \"{{practitioner}}\",\n    \"appointment_date\": \"{{appointment_date}}\",\n    \"appointment_time\": \"{{appointment_time}}\",\n    \"duration\": 30\n  }\n}" },
+            "url": { "raw": "{{api}}.appointments.create_appointment", "host": ["{{api}}.appointments.create_appointment"] }
+          }
+        },
+        {
+          "name": "Create appointment AGAIN (expect 409 CONFLICT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "pm.test('double booking rejected', () => pm.expect(b.success).to.be.false);",
+                  "pm.test('code is CONFLICT', () => pm.expect(b.error.code).to.eql('CONFLICT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"patient\": \"{{patient}}\",\n    \"practitioner\": \"{{practitioner}}\",\n    \"appointment_date\": \"{{appointment_date}}\",\n    \"appointment_time\": \"{{appointment_time}}\",\n    \"duration\": 30\n  }\n}" },
+            "url": { "raw": "{{api}}.appointments.create_appointment", "host": ["{{api}}.appointments.create_appointment"] },
+            "description": "Marley's validate_overlaps -> OverlapError, surfaced by clinic_core as 409 CONFLICT."
+          }
+        },
+        {
+          "name": "List appointments",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.appointments.list_appointments", "host": ["{{api}}.appointments.list_appointments"] },
+            "description": "Scoping is server-side: a Patient caller always sees only their own, whatever is passed."
+          }
+        },
+        {
+          "name": "Get appointment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"appointment\": \"{{appointment}}\"\n}" },
+            "url": { "raw": "{{api}}.appointments.get_appointment", "host": ["{{api}}.appointments.get_appointment"] }
+          }
+        },
+        {
+          "name": "Reschedule appointment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"appointment\": \"{{appointment}}\",\n  \"appointment_time\": \"14:00:00\"\n}" },
+            "url": { "raw": "{{api}}.appointments.reschedule_appointment", "host": ["{{api}}.appointments.reschedule_appointment"] }
+          }
+        },
+        {
+          "name": "Set status (STAFF, allowlisted values)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"appointment\": \"{{appointment}}\",\n  \"status\": \"Checked In\"\n}" },
+            "url": { "raw": "{{api}}.appointments.set_status", "host": ["{{api}}.appointments.set_status"] },
+            "description": "Allowed: Scheduled, Open, Closed, Cancelled, No Show, Checked In."
+          }
+        },
+        {
+          "name": "Cancel appointment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"appointment\": \"{{appointment}}\"\n}" },
+            "url": { "raw": "{{api}}.appointments.cancel_appointment", "host": ["{{api}}.appointments.cancel_appointment"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Encounters",
+      "item": [
+        {
+          "name": "Create encounter (Physician)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) pm.collectionVariables.set('encounter', b.data.name);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"patient\": \"{{patient}}\",\n    \"appointment\": \"{{appointment}}\",\n    \"symptoms\": [\"headache\"],\n    \"diagnosis\": [\"tension headache\"],\n    \"encounter_comment\": \"TEST note - synthetic data only\"\n  }\n}" },
+            "url": { "raw": "{{api}}.encounters.create_encounter", "host": ["{{api}}.encounters.create_encounter"] },
+            "description": "Login as the Doctor first. symptoms/diagnosis accept a list or a comma-separated string."
+          }
+        },
+        {
+          "name": "Get encounter (clinical gating)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) console.log('clinical_access:', b.data.clinical_access);",
+                  "// As a Physician: true (diagnosis present).",
+                  "// As reception (Nursing User): false, and the clinical keys are absent."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"encounter\": \"{{encounter}}\"\n}" },
+            "url": { "raw": "{{api}}.encounters.get_encounter", "host": ["{{api}}.encounters.get_encounter"] }
+          }
+        },
+        {
+          "name": "List encounters",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.encounters.list_encounters", "host": ["{{api}}.encounters.list_encounters"] }
+          }
+        },
+        {
+          "name": "Update encounter (draft only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"encounter\": \"{{encounter}}\",\n  \"payload\": {\n    \"encounter_comment\": \"TEST note - amended\"\n  }\n}" },
+            "url": { "raw": "{{api}}.encounters.update_encounter", "host": ["{{api}}.encounters.update_encounter"] }
+          }
+        },
+        {
+          "name": "Submit encounter",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"encounter\": \"{{encounter}}\"\n}" },
+            "url": { "raw": "{{api}}.encounters.submit_encounter", "host": ["{{api}}.encounters.submit_encounter"] },
+            "description": "After submit the encounter is immutable; update_encounter returns CONFLICT."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Invoices",
+      "item": [
+        {
+          "name": "Create consultation invoice (BILLING)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) { pm.collectionVariables.set('invoice', b.data.name);",
+                  "  pm.test('starts unpaid', () => pm.expect(b.data.payment_status).to.eql('unpaid')); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"patient\": \"{{patient}}\",\n    \"practitioner\": \"{{practitioner}}\",\n    \"rate\": 1000,\n    \"submit\": true\n  }\n}" },
+            "url": { "raw": "{{api}}.invoices.create_consultation_invoice", "host": ["{{api}}.invoices.create_consultation_invoice"] },
+            "description": "Login as Admin or Receptionist. Omit 'rate' to use the practitioner's op_consulting_charge."
+          }
+        },
+        {
+          "name": "Get invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"invoice\": \"{{invoice}}\"\n}" },
+            "url": { "raw": "{{api}}.invoices.get_invoice", "host": ["{{api}}.invoices.get_invoice"] }
+          }
+        },
+        {
+          "name": "List invoices",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.invoices.list_invoices", "host": ["{{api}}.invoices.list_invoices"] }
+          }
+        },
+        {
+          "name": "Outstanding for patient",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.invoices.outstanding", "host": ["{{api}}.invoices.outstanding"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Payments",
+      "item": [
+        {
+          "name": "Record PARTIAL payment (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) {",
+                  "  pm.test('outstanding reduced', () => pm.expect(b.data.outstanding_amount).to.eql(600));",
+                  "  pm.test('not fully paid', () => pm.expect(b.data.fully_paid).to.be.false);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"invoice\": \"{{invoice}}\",\n    \"amount\": 400,\n    \"mode_of_payment\": \"Cash\"\n  }\n}" },
+            "url": { "raw": "{{api}}.payments.record_payment", "host": ["{{api}}.payments.record_payment"] }
+          }
+        },
+        {
+          "name": "Record REMAINING payment (600)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) pm.test('fully paid', () => pm.expect(b.data.fully_paid).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"invoice\": \"{{invoice}}\",\n    \"amount\": 600,\n    \"mode_of_payment\": \"Cash\"\n  }\n}" },
+            "url": { "raw": "{{api}}.payments.record_payment", "host": ["{{api}}.payments.record_payment"] }
+          }
+        },
+        {
+          "name": "Overpayment (expect rejection)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "pm.test('overpayment refused', () => pm.expect(b.success).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"invoice\": \"{{invoice}}\",\n    \"amount\": 100\n  }\n}" },
+            "url": { "raw": "{{api}}.payments.record_payment", "host": ["{{api}}.payments.record_payment"] }
+          }
+        },
+        {
+          "name": "Payment history",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"{{patient}}\"\n}" },
+            "url": { "raw": "{{api}}.payments.payment_history", "host": ["{{api}}.payments.payment_history"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Security probes",
+      "description": "Run 'Login (Patient A)' first. Each of these MUST fail.",
+      "item": [
+        {
+          "name": "Patient A reads Patient B (expect 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.response.to.have.status(403));",
+                  "const b = pm.response.json().message;",
+                  "pm.test('FORBIDDEN', () => pm.expect(b.error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"Test Patient B\"\n}" },
+            "url": { "raw": "{{api}}.patients.get_patient", "host": ["{{api}}.patients.get_patient"] }
+          }
+        },
+        {
+          "name": "Patient A modifies Patient B (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patient\": \"Test Patient B\",\n  \"payload\": { \"mobile\": \"+920000000000\" }\n}" },
+            "url": { "raw": "{{api}}.patients.update_patient", "host": ["{{api}}.patients.update_patient"] }
+          }
+        },
+        {
+          "name": "Patient lists all patients (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.patients.list_patients", "host": ["{{api}}.patients.list_patients"] }
+          }
+        },
+        {
+          "name": "Patient records a payment (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payload\": { \"invoice\": \"{{invoice}}\", \"amount\": 1 }\n}" },
+            "url": { "raw": "{{api}}.payments.record_payment", "host": ["{{api}}.payments.record_payment"] }
+          }
+        },
+        {
+          "name": "Reception reads clinical notes (expect clinical_access:false)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json().message;",
+                  "if (b.success) {",
+                  "  pm.test('clinical gated', () => pm.expect(b.data.clinical_access).to.be.false);",
+                  "  pm.test('diagnosis absent', () => pm.expect(b.data).to.not.have.property('diagnosis'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"encounter\": \"{{encounter}}\"\n}" },
+            "url": { "raw": "{{api}}.encounters.get_encounter", "host": ["{{api}}.encounters.get_encounter"] },
+            "description": "Login as the Receptionist first."
+          }
+        },
+        {
+          "name": "Guest calls protected endpoint (expect 401/403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('denied', () => pm.expect([401,403]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{api}}.patients.list_patients", "host": ["{{api}}.patients.list_patients"] },
+            "description": "Clear cookies in Postman first so the request is unauthenticated."
+          }
+        }
+      ]
+    }
+  ]
+}

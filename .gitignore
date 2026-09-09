@@ -1,0 +1,7 @@
+﻿# Frappe bench lives in WSL, not here
+backend/frappe-bench/
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.log
