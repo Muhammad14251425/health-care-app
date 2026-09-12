@@ -62,7 +62,15 @@ RUN set -eux; \
     # at the repo root, next to (not inside) the module it builds.
     mv clinic_core/pyproject.toml .; \
     mv clinic_core/README.md .; \
-    /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir -e .; \
+    echo "--- layout before install ---"; ls -la .; ls -la clinic_core | head -20; \
+    # flit_core builds this app but is not part of the bench venv by default --
+    # without it the editable install fails while resolving the build backend.
+    /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir "flit_core>=3.4,<4"; \
+    # Verbose, and the log is echoed on failure: a bare `pip install -e` reports
+    # only "exit code 1" in the CI summary, which says nothing about the cause.
+    /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir --no-build-isolation -e . -v > /tmp/pip.log 2>&1 \
+      || { echo "=== PIP INSTALL FAILED ==="; tail -80 /tmp/pip.log; exit 1; }; \
+    /home/frappe/frappe-bench/env/bin/python -c "import clinic_core; print('import OK', clinic_core.__version__)"; \
     echo "clinic_core" >> /home/frappe/frappe-bench/sites/apps.txt; \
     cd /home/frappe/frappe-bench; \
     # Assets for every installed app. Without this the desk UI 404s on its own
