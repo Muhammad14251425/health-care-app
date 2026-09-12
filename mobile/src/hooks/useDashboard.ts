@@ -75,7 +75,13 @@ export function useDashboard() {
   const counts = useMemo(() => summarise(appointments), [appointments]);
 
   const billing = useMemo(() => {
-    const invoices = billingQuery.data?.items ?? [];
+    // SUBMITTED invoices only (docstatus 1). `list_invoices` returns drafts as
+    // well, deliberately -- staff need to see them -- but a draft posts nothing
+    // to the general ledger, so none of these three figures may count it:
+    // it is not money owed, not money taken, and not an unpaid bill.
+    const invoices = (billingQuery.data?.items ?? []).filter(
+      (invoice) => invoice.docstatus === 1,
+    );
     const todayInvoices = invoices.filter((invoice) => invoice.posting_date === today);
 
     // "Collected today" is what today's invoices have actually been paid, i.e.

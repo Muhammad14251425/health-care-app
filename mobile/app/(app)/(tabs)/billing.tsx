@@ -69,10 +69,15 @@ export default function BillingScreen({ patientOverride }: BillingScreenProps = 
   const invoices = useMemo(() => query.data?.items ?? [], [query.data]);
 
   const summary = useMemo(() => {
-    const collectedToday = invoices
+    // Money totals count SUBMITTED invoices only. The list deliberately includes
+    // drafts so staff can see them, but a draft posts nothing to the general
+    // ledger: its outstanding_amount is not owed, and `grand_total -
+    // outstanding` on a draft is zero-minus-nothing, not cash taken.
+    const posted = invoices.filter((invoice) => invoice.docstatus === 1);
+    const collectedToday = posted
       .filter((invoice) => invoice.posting_date === today)
       .reduce((sum, invoice) => sum + (invoice.grand_total - invoice.outstanding_amount), 0);
-    const outstanding = invoices.reduce((sum, i) => sum + i.outstanding_amount, 0);
+    const outstanding = posted.reduce((sum, i) => sum + i.outstanding_amount, 0);
     return { collectedToday, outstanding, currency: invoices[0]?.currency };
   }, [invoices, today]);
 

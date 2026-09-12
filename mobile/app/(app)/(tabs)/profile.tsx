@@ -66,10 +66,13 @@ export default function ProfileScreen() {
       ];
     }
 
-    const outstanding = (invoices.data?.items ?? []).reduce(
-      (sum, invoice) => sum + invoice.outstanding_amount,
-      0,
-    );
+    // SUBMITTED invoices only. `list_invoices` returns drafts too (staff need to
+    // see them), but a draft posts nothing to the general ledger, so its
+    // outstanding_amount is not money anyone owes -- counting it made this stat
+    // disagree with the Reports screen and with ERPNext's own receivables.
+    const outstanding = (invoices.data?.items ?? [])
+      .filter((invoice) => invoice.docstatus === 1)
+      .reduce((sum, invoice) => sum + invoice.outstanding_amount, 0);
     return [
       { label: 'Appointments', value: counts.total },
       { label: 'Completed', value: counts.completed },
