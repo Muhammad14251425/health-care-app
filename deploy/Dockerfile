@@ -92,6 +92,27 @@ WORKDIR /home/frappe/frappe-bench
 
 COPY --from=build --chown=frappe:frappe /home/frappe/frappe-bench /home/frappe/frappe-bench
 
+# `bench init` writes the LOCAL development defaults into common_site_config.json
+# (redis on 127.0.0.1:11000-11003, from a single-machine bench). Those values win
+# over the REDIS_* environment variables, so without this the workers and the
+# socketio server die on startup with:
+#
+#   Error 111 connecting to 127.0.0.1:11000. Connection refused.
+#
+# Overwritten here with the compose service names so the shipped image is correct
+# for this stack rather than needing a manual fix after every deploy.
+RUN printf '%s\n' \
+    '{' \
+    ' "db_host": "db",' \
+    ' "db_port": 3306,' \
+    ' "redis_cache": "redis://redis-cache:6379",' \
+    ' "redis_queue": "redis://redis-queue:6379",' \
+    ' "redis_socketio": "redis://redis-queue:6379",' \
+    ' "socketio_port": 9000,' \
+    ' "webserver_port": 8000,' \
+    ' "developer_mode": 0' \
+    '}' > /home/frappe/frappe-bench/sites/common_site_config.json
+
 ENV PATH="/home/frappe/frappe-bench/env/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
