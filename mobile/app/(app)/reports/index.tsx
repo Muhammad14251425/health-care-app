@@ -14,7 +14,9 @@
  */
 
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { FileDown, FileSearch } from 'lucide-react-native';
 import { useQueries } from '@tanstack/react-query';
 
 import { Screen } from '@/components/ui/Screen';
@@ -32,6 +34,7 @@ import { formatCurrencyCompact } from '@/utils/currency';
 import { colors, radius, spacing } from '@/theme';
 
 export default function ReportsScreen() {
+  const router = useRouter();
   const { canViewBilling } = usePermissions();
   const [period, setPeriod] = useState<ReportPeriod>('month');
 
@@ -77,6 +80,25 @@ export default function ReportsScreen() {
   return (
     <Screen onRefresh={refetchAll} refreshing={overview.isRefetching}>
       <BackHeader title="Reports" subtitle="How the clinic is doing" />
+
+      {/* Entry points to the full report engine. The summary below answers the
+          usual questions; these two go deeper when it does not. */}
+      <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+        <Shortcut
+          label="All reports"
+          caption="Browse & export"
+          icon={<FileSearch size={17} color={colors.green} strokeWidth={1.8} />}
+          onPress={() => router.push('/(app)/reports/browse')}
+        />
+        {canViewBilling ? (
+          <Shortcut
+            label="Invoices"
+            caption="Bulk download"
+            icon={<FileDown size={17} color={colors.green} strokeWidth={1.8} />}
+            onPress={() => router.push('/(app)/reports/invoices')}
+          />
+        ) : null}
+      </View>
 
       <View style={{ marginBottom: spacing.lg }}>
         <FilterPillRow options={PERIOD_LABELS} value={period} onChange={setPeriod} />
@@ -275,6 +297,37 @@ function MiniBars({ series, peak }: { series: reportsApi.TrendPoint[]; peak: num
         />
       ))}
     </View>
+  );
+}
+
+/** Square tile linking into the deeper report tools. */
+function Shortcut({
+  label,
+  caption,
+  icon,
+  onPress,
+}: {
+  label: string;
+  caption: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1 }} accessibilityRole="button">
+      <Card padding={spacing.md}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          {icon}
+          <View style={{ flex: 1 }}>
+            <Text variant="cardTitle" numberOfLines={1}>
+              {label}
+            </Text>
+            <Text variant="micro" muted numberOfLines={1}>
+              {caption}
+            </Text>
+          </View>
+        </View>
+      </Card>
+    </Pressable>
   );
 }
 
