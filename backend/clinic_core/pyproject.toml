@@ -1,0 +1,39 @@
+[project]
+name = "clinic_core"
+version = "1.0.0"
+description = "Clinic API layer: scheduling, patient portal and public booking on top of ERPNext Healthcare"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# No dependencies declared on purpose.
+#
+# frappe, erpnext and healthcare are supplied by the bench, not by pip -- they
+# are installed as editable apps and listing them here would make pip try to
+# resolve them from PyPI (where `healthcare` is an unrelated package). The hard
+# requirement is expressed in hooks.py as `required_apps`, which is what Frappe
+# actually enforces at install time.
+dependencies = []
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "clinic_core"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "RUF"]
+ignore = [
+    "B017",  # assertRaises(Exception) is fine in the permission tests
+    "E501",  # long lines are allowed; the comments here carry real detail
+    "RUF001",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"

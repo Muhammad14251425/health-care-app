@@ -1,0 +1,193 @@
+# Clinic platform stack for Coolify.
+#
+# MEMORY BUDGET. This server has ~3.5GB genuinely free (Supabase and Coolify hold
+# the rest) plus 4GB of swap. The stock frappe_docker compose assumes a machine
+# with room to spare and would push this box onto swap under load, so every
+# service here carries an explicit limit and the worker counts are reduced:
+#
+#   mariadb     896M   (buffer pool pinned to 384M, below)
+#   backend     640M   (2 gunicorn workers, not the usual 4-8)
+#   queue-long  320M   \ one worker each rather than a pool -- a single-clinic
+#   queue-short 288M   / load does not need more, and each costs ~250M
+#   scheduler   224M
+#   websocket   192M
+#   redis x2    384M   (192M each: queue persists, cache evicts)
+#   frontend     80M
+#   ---------------
+#   ~3.0GB ceiling against ~3.5GB free, so ~600M stays clear for the host.
+#
+# If the clinic grows, raise backend workers first, then queue-short.
+
+x-backend-defaults: &backend_defaults
+  image: ${IMAGE_NAME}
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+    redis-cache:
+      condition: service_started
+    redis-queue:
+      condition: service_started
+  environment: &backend_env
+    DB_HOST: db
+    DB_PORT: "3306"
+    REDIS_CACHE: redis://redis-cache:6379
+    REDIS_QUEUE: redis://redis-queue:6379
+    SOCKETIO_PORT: "9000"
+  volumes:
+    - sites:/home/frappe/frappe-bench/sites
+    - logs:/home/frappe/frappe-bench/logs
+
+services:
+  # --- data ------------------------------------------------------------------
+  db:
+    image: mariadb:10.6
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+      # Frappe's own requirement, not a preference: it issues queries that fail
+      # under ONLY_FULL_GROUP_BY.
+      - --sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+      # 384M rather than the 70%-of-RAM default. On a shared box that default
+      # would claim ~5GB it cannot have.
+      - --innodb-buffer-pool-size=384M
+      - --innodb-log-file-size=128M
+      - --max-connections=100
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD}
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      # Authenticated check. `mysqladmin ping` answers before the server can
+      # actually serve queries, which lets dependants start too early and fail
+      # their first connection.
+      test: ["CMD-SHELL", "mariadb -uroot -p$$MARIADB_ROOT_PASSWORD -e 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 896M
+
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Cache only: evict rather than grow without bound.
+    command: redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru --save ""
+    volumes:
+      - redis-cache-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Queue: NO eviction and persistence on. Evicting here would silently drop
+    # background jobs -- a queued OTP send or invoice submission would vanish.
+    command: redis-server --maxmemory-policy noeviction --appendonly yes
+    volumes:
+      - redis-queue-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  # --- application -----------------------------------------------------------
+  backend:
+    <<: *backend_defaults
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+
+  websocket:
+    <<: *backend_defaults
+    command:
+      - node
+      - /home/frappe/frappe-bench/apps/frappe/socketio.js
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  scheduler:
+    <<: *backend_defaults
+    command: ["bench", "schedule"]
+    deploy:
+      resources:
+        limits:
+          memory: 224M
+
+  queue-short:
+    <<: *backend_defaults
+    command: ["bench", "worker", "--queue", "short,default"]
+    deploy:
+      resources:
+        limits:
+          memory: 288M
+
+  queue-long:
+    <<: *backend_defaults
+    command: ["bench", "worker", "--queue", "long,default,short"]
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+  # --- edge ------------------------------------------------------------------
+  frontend:
+    image: ${IMAGE_NAME}
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - websocket
+    command:
+      - nginx-entrypoint.sh
+    environment:
+      BACKEND: backend:8000
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?set SITE_NAME}
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: "120"
+      CLIENT_MAX_BODY_SIZE: "50m"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    labels:
+      # Coolify's Traefik reads these. HTTPS is terminated here and the
+      # certificate is issued by Let's Encrypt automatically.
+      - traefik.enable=true
+      - traefik.http.routers.clinic.rule=Host(`${SITE_NAME}`)
+      - traefik.http.routers.clinic.entrypoints=https
+      - traefik.http.routers.clinic.tls=true
+      - traefik.http.routers.clinic.tls.certresolver=letsencrypt
+      - traefik.http.services.clinic.loadbalancer.server.port=8080
+      # Plain HTTP is redirected, never served: this stack carries OTP codes,
+      # session cookies and patient records.
+      - traefik.http.routers.clinic-http.rule=Host(`${SITE_NAME}`)
+      - traefik.http.routers.clinic-http.entrypoints=http
+      - traefik.http.routers.clinic-http.middlewares=clinic-https
+      - traefik.http.middlewares.clinic-https.redirectscheme.scheme=https
+    ports:
+      - "8080"
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+
+volumes:
+  sites:
+  logs:
+  db-data:
+  redis-cache-data:
+  redis-queue-data:

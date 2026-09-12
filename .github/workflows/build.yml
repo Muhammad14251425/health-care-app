@@ -1,0 +1,69 @@
+# Build the clinic image and push it to GHCR.
+#
+# Built here rather than on the server on purpose: a Frappe image build is
+# memory- and CPU-hungry (it compiles assets for frappe, erpnext, healthcare and
+# clinic_core), and the deployment box has ~3.5GB free shared with Supabase and
+# Coolify. Building there would very likely OOM, and would compete with running
+# services while it did.
+
+name: build image
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something that lands IN the image changes. The mobile app
+    # and docs do not, so a docs commit should not spend 20 minutes rebuilding.
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - uses: docker/build-push-action@v6
+        with:
+          # Root context, not deploy/: the Dockerfile copies backend/clinic_core
+          # and so needs to see the whole tree.
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: image
+        run: |
+          echo "### Image pushed" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
