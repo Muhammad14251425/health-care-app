@@ -1,10 +1,14 @@
 [project]
 name = "clinic_core"
-version = "1.0.0"
 description = "Clinic API layer: scheduling, patient portal and public booking on top of ERPNext Healthcare"
 readme = "README.md"
-requires-python = ">=3.10"
+# The frappe/build:version-16 image ships Python 3.11; the development bench runs
+# 3.14. Both satisfy this, so the same source installs in either.
+requires-python = ">=3.11"
 license = { text = "MIT" }
+# Read from clinic_core/__init__.py by flit rather than duplicated here, so the
+# version cannot drift between the two.
+dynamic = ["version"]
 
 # No dependencies declared on purpose.
 #
@@ -24,7 +28,7 @@ name = "clinic_core"
 
 [tool.ruff]
 line-length = 110
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["F", "E", "W", "I", "UP", "B", "RUF"]

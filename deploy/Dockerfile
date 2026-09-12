@@ -42,16 +42,29 @@ RUN set -eux; \
 
 WORKDIR /home/frappe/frappe-bench
 
-# clinic_core: copied from the build context, then installed as a bench app.
-# `bench get-app` on a local path registers it in sites/apps.txt and pip-installs
-# it in one step, which is what makes `install-app` work later.
-COPY --chown=frappe:frappe backend/clinic_core /home/frappe/frappe-bench/apps/clinic_core
+# clinic_core.
+#
+# A bench app is TWO levels: an outer repo directory holding pyproject.toml, and
+# an inner Python package of the same name. Only the inner package is in git
+# (backend/clinic_core), so the outer level is assembled here -- copying the
+# inner package straight to apps/clinic_core leaves pip with no package to find,
+# which is exactly how the first build failed.
+#
+#   apps/clinic_core/                <- outer: pyproject.toml lives here
+#   apps/clinic_core/clinic_core/    <- inner: hooks.py, api/, doctypes
+COPY --chown=frappe:frappe backend/clinic_core /home/frappe/frappe-bench/apps/clinic_core/clinic_core
 
 RUN set -eux; \
     export PYENV_ROOT=/home/frappe/.pyenv; \
     export PATH="${PYENV_ROOT}/bin:${PYENV_ROOT}/shims:${PATH}"; \
-    /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir -e /home/frappe/frappe-bench/apps/clinic_core; \
+    cd /home/frappe/frappe-bench/apps/clinic_core; \
+    # pyproject.toml and README are committed inside the package; flit needs them
+    # at the repo root, next to (not inside) the module it builds.
+    mv clinic_core/pyproject.toml .; \
+    mv clinic_core/README.md .; \
+    /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir -e .; \
     echo "clinic_core" >> /home/frappe/frappe-bench/sites/apps.txt; \
+    cd /home/frappe/frappe-bench; \
     # Assets for every installed app. Without this the desk UI 404s on its own
     # bundles, which looks like a broken site rather than a missing build step.
     bench build --production || bench build
