@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
   Building2,
+  ChartNoAxesColumn,
   CircleHelp,
   LogOut,
   ShieldCheck,
@@ -129,6 +130,17 @@ export default function ProfileScreen() {
           <ProfileStat key={stat.label} label={stat.label} value={stat.value} />
         ))}
       </View>
+
+      <SectionHeader title="Clinic" />
+      <SettingsGroup>
+        <SettingsRow
+          icon={<ChartNoAxesColumn size={16} color="#566057" strokeWidth={1.8} />}
+          label="Reports"
+          value={permissions.canViewBilling ? 'Activity & revenue' : 'Activity'}
+          onPress={() => router.push('/(app)/reports')}
+          last
+        />
+      </SettingsGroup>
 
       <SectionHeader title="Account" />
       <SettingsGroup>

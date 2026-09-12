@@ -13,4 +13,5 @@ from clinic_core.api.v1 import (  # noqa: F401
     payments,
     practitioners,
     public,
+    reports,
 )

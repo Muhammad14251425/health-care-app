@@ -67,6 +67,10 @@ export const queryKeys = {
 
   invoices: (filters?: Record<string, unknown>) => ['invoices', filters ?? {}] as const,
   invoice: (id: string) => ['invoice', id] as const,
+
+  // Reports are keyed by period so switching the filter refetches rather than
+  // showing last period's figures under the new label.
+  report: (name: string, period: string) => ['report', name, period] as const,
   outstanding: (patient?: string) => ['outstanding', patient ?? 'all'] as const,
   payments: (patient: string) => ['payments', patient] as const,
 
