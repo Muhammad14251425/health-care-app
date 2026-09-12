@@ -1,0 +1,147 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:phone_e164",
+ "creation": "2026-09-10 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "description": "Authentication anchor binding one normalised phone number to exactly one Patient and one User. Written only by clinic_core server code; no role may read or edit it.",
+ "field_order": [
+  "phone_e164",
+  "patient",
+  "patient_name",
+  "column_break_auth",
+  "user",
+  "status",
+  "section_break_audit",
+  "verified_on",
+  "last_login_on",
+  "column_break_audit",
+  "failed_logins",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "phone_e164",
+   "fieldtype": "Data",
+   "label": "Phone (E.164)",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Normalised login identity, e.g. +923001234567. Never store raw user input here."
+  },
+  {
+   "fieldname": "patient",
+   "fieldtype": "Link",
+   "options": "Patient",
+   "label": "Patient",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "One login per Patient record."
+  },
+  {
+   "fieldname": "patient_name",
+   "fieldtype": "Data",
+   "label": "Patient Name",
+   "fetch_from": "patient.patient_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_auth",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "User",
+   "reqd": 1,
+   "unique": 1,
+   "description": "The Frappe User whose session represents this patient."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "options": "Active\nBlocked",
+   "default": "Active",
+   "label": "Status",
+   "in_list_view": 1,
+   "description": "Blocked stops OTP login without deleting the mapping."
+  },
+  {
+   "fieldname": "section_break_audit",
+   "fieldtype": "Section Break",
+   "label": "Audit"
+  },
+  {
+   "fieldname": "verified_on",
+   "fieldtype": "Datetime",
+   "label": "Phone Verified On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_login_on",
+   "fieldtype": "Datetime",
+   "label": "Last Login On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_audit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "failed_logins",
+   "fieldtype": "Int",
+   "label": "Failed Logins",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "description": "Staff annotation, e.g. why a mapping was blocked or re-pointed."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-10 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Clinic Core",
+ "name": "Patient Phone Mapping",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Healthcare Administrator",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "quick_entry": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

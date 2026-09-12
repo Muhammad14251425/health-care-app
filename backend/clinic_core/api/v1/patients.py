@@ -62,7 +62,24 @@ def list_patients(search=None, limit=20, start=0):
         limit_start=start,
         order_by="modified desc",
     )
-    total = frappe.db.count("Patient", filters)
+
+    # `total` drives both the "N registered" label and the infinite-scroll
+    # stop condition in the mobile list (loaded < total => fetch another page).
+    # frappe.db.count() takes `filters` but NOT `or_filters`, so counting with
+    # it ignored the search terms entirely: a search matching 2 patients still
+    # reported the full active-patient count, which showed the wrong number and
+    # made the list request a page that could only come back empty.
+    # get_list() honours or_filters, so count through it instead.
+    # Frappe rejects raw SQL strings in `fields`; {"COUNT": "*"} is the
+    # supported aggregate form.
+    count_rows = frappe.get_list(
+        "Patient",
+        filters=filters,
+        or_filters=or_filters,
+        fields=[{"COUNT": "*"}],
+    )
+    total = next(iter(count_rows[0].values())) if count_rows else 0
+
     return {"items": rows, "total": total, "limit": limit, "start": start}
 
 

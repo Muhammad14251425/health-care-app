@@ -84,14 +84,9 @@ def list_invoices(patient=None, status=None, limit=50, start=0):
 @frappe.whitelist()
 @clinic_api()
 def get_invoice(invoice):
-    if not frappe.db.exists("Sales Invoice", invoice):
-        raise ApiError(Code.NOT_FOUND, _("Invoice not found."))
-
-    doc = frappe.get_doc("Sales Invoice", invoice)
-    if not is_staff():
-        if not doc.get("patient"):
-            raise ApiError(Code.FORBIDDEN, _("You are not allowed to access this record."))
-        assert_patient_access(doc.patient)
+    # Shared with the PDF/email endpoints so every read of an invoice applies
+    # the same doctype-permission and patient-ownership rules.
+    doc = _assert_invoice_access(invoice)
 
     data = {f: doc.get(f) for f in INVOICE_FIELDS}
     data["payment_status"] = _payment_status(data)
@@ -219,6 +214,122 @@ def submit_invoice(invoice):
     out = {f: doc.get(f) for f in INVOICE_FIELDS}
     out["payment_status"] = _payment_status(out)
     return out
+
+
+def _assert_invoice_access(invoice):
+    """Read guard shared by get_invoice and the share endpoints."""
+    if not frappe.db.exists("Sales Invoice", invoice):
+        raise ApiError(Code.NOT_FOUND, _("Invoice not found."))
+
+    # list_invoices goes through frappe.get_list, which enforces Sales Invoice
+    # doctype permissions -- that is why a Physician correctly gets 403 there.
+    # frappe.get_doc() below does NOT run that check, so without this guard the
+    # detail endpoint was wider than the list: a doctor with no billing access
+    # could still read any invoice (totals, outstanding, patient) by ID, and
+    # invoice names are sequential. Check the same permission explicitly.
+    if not frappe.has_permission("Sales Invoice", "read"):
+        raise ApiError(
+            Code.FORBIDDEN, _("You do not have access to billing records.")
+        )
+
+    doc = frappe.get_doc("Sales Invoice", invoice)
+    if not is_staff():
+        if not doc.get("patient"):
+            raise ApiError(Code.FORBIDDEN, _("You are not allowed to access this record."))
+        assert_patient_access(doc.patient)
+    return doc
+
+
+def _render_invoice_pdf(invoice, print_format=None):
+    """Raw PDF bytes for a submitted invoice. Raises ApiError on any failure."""
+    doc = _assert_invoice_access(invoice)
+    if doc.docstatus == 0:
+        raise ApiError(Code.VALIDATION, _("Submit the invoice before sharing it."))
+
+    try:
+        html = frappe.get_print("Sales Invoice", invoice, print_format=print_format)
+        from frappe.utils.pdf import get_pdf
+
+        return get_pdf(html)
+    except (frappe.PermissionError, ApiError):
+        # A caller without Sales Invoice read (e.g. a pure Physician) must get a
+        # 403, not a 500 -- let the decorator translate it.
+        raise
+    except Exception:
+        # wkhtmltopdf failures are environmental (missing binary, or a host_name
+        # the renderer cannot resolve when fetching header/footer assets).
+        # Log the detail; tell the caller something plain and actionable.
+        frappe.log_error(frappe.get_traceback(), "clinic_core: invoice PDF failed")
+        raise ApiError(
+            Code.INTERNAL,
+            _("Could not produce the invoice PDF. Please try again later."),
+        )
+
+
+@frappe.whitelist()
+@clinic_api()
+def invoice_pdf(invoice, print_format=None):
+    """Render an invoice as a PDF and return it base64-encoded.
+
+    Base64 rather than a redirect: a mobile client holds a session cookie, not a
+    browser, and the native share sheet needs the bytes on the device anyway.
+    The payload is small (a one-line consultation invoice is ~21 KB).
+
+    A draft invoice is refused -- sharing an unsubmitted document would send the
+    patient a figure the clinic has not committed to.
+    """
+    import base64
+
+    pdf = _render_invoice_pdf(invoice, print_format)
+    return {
+        "invoice": invoice,
+        "filename": f"{invoice}.pdf",
+        "mime_type": "application/pdf",
+        "encoding": "base64",
+        "content": base64.b64encode(pdf).decode(),
+        "size": len(pdf),
+    }
+
+
+@frappe.whitelist()
+@clinic_api(roles=BILLING_ROLES)
+def email_invoice(invoice, recipient=None, message=None):
+    """Email the invoice PDF to the patient (or an explicit recipient).
+
+    Billing staff only -- this sends clinic correspondence on the clinic's
+    behalf. Queued through Frappe's outgoing mail, so it needs an Email Account
+    configured; without one the caller is told so rather than being told the
+    send succeeded.
+    """
+    doc = _assert_invoice_access(invoice)
+    if doc.docstatus == 0:
+        raise ApiError(Code.VALIDATION, _("Submit the invoice before sending it."))
+
+    to = (recipient or "").strip() or frappe.db.get_value("Patient", doc.patient, "email")
+    if not to:
+        raise ApiError(
+            Code.VALIDATION,
+            _("No email address on file for this patient. Provide a recipient."),
+        )
+
+    if not frappe.db.exists("Email Account", {"enable_outgoing": 1}):
+        # A configuration gap, not a server fault: the client should fall back to
+        # the share sheet, so give it a 4xx it can branch on rather than a 500.
+        raise ApiError(
+            Code.VALIDATION,
+            _("Email is not configured for this clinic. Share the PDF instead."),
+        )
+
+    pdf = _render_invoice_pdf(invoice)
+    frappe.sendmail(
+        recipients=[to],
+        subject=_("Invoice {0}").format(invoice),
+        message=message or _("Please find your invoice attached."),
+        attachments=[{"fname": f"{invoice}.pdf", "fcontent": pdf}],
+        reference_doctype="Sales Invoice",
+        reference_name=invoice,
+    )
+    return {"invoice": invoice, "sent_to": to}
 
 
 @frappe.whitelist()

@@ -94,6 +94,21 @@ def get_appointment(appointment):
     # Horizontal guard: a patient may only read their own appointment.
     if not is_staff():
         assert_patient_access(doc.patient)
+    else:
+        # Same horizontal rule the LIST applies (see _scope_filters): a pure
+        # Physician is scoped to their own calendar. Without this, the detail
+        # endpoint was wider than the list that feeds it -- a doctor could read
+        # a colleague's appointment by ID even though it was filtered out of
+        # every listing they can see, and IDs are sequential (HLC-APP-YYYY-000NN)
+        # so they are guessable.
+        my_practitioner = current_practitioner()
+        if my_practitioner and not set(frappe.get_roles()) & {
+            "Administrator", "System Manager", "Healthcare Administrator", "Nursing User"
+        }:
+            if doc.practitioner != my_practitioner:
+                raise ApiError(
+                    Code.FORBIDDEN, _("You may only view your own appointments.")
+                )
 
     return {f: doc.get(f) for f in APPT_FIELDS}
 
@@ -138,6 +153,47 @@ def available_slots(practitioner, date=None, appointment_type=None):
     return {"practitioner": practitioner, "date": date, "available": True,
             "slot_details": data.get("slot_details", []),
             "fee_validity": data.get("fee_validity")}
+
+
+@frappe.whitelist()
+@clinic_api()
+def bookable_slots(practitioner, date=None, appointment_type=None):
+    """Discrete bookable times for staff -- the authenticated twin of
+    `public.availability.slots`.
+
+    `available_slots` above returns Marley's raw schedule WINDOWS (09:00-17:00)
+    and a service-unit-scoped `appointments[]` that is empty for ordinary
+    consultations. Clients previously had to turn that into times themselves,
+    which meant the staff booking screen and the guest booking screen computed
+    availability by two different mechanisms and could disagree about the same
+    calendar.
+
+    Both now call clinic_core.api.v1.slots.compute_slots(). `available_slots`
+    is kept for callers that genuinely want the raw Marley payload.
+
+    Still advisory: create_appointment re-validates and returns 409 on conflict.
+    """
+    from clinic_core.api.v1 import slots as slot_engine
+
+    if not frappe.db.exists("Healthcare Practitioner", practitioner):
+        raise ApiError(Code.NOT_FOUND, _("Practitioner not found."))
+
+    return slot_engine.compute_slots(practitioner, date, appointment_type)
+
+
+@frappe.whitelist()
+@clinic_api()
+def working_days(practitioner, start_date=None, limit=14):
+    """Which of the next N days a practitioner works -- staff date strips."""
+    from clinic_core.api.v1 import slots as slot_engine
+
+    if not frappe.db.exists("Healthcare Practitioner", practitioner):
+        raise ApiError(Code.NOT_FOUND, _("Practitioner not found."))
+
+    days = slot_engine.working_days(practitioner, start_date, limit)
+    if days is None:
+        raise ApiError(Code.VALIDATION, _("This doctor has no published schedule."))
+    return {"practitioner": practitioner, "days": days}
 
 
 @frappe.whitelist()

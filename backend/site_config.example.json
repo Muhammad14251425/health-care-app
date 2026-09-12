@@ -1,0 +1,33 @@
+{
+  "//": "clinic_core settings for sites/<site>/site_config.json. Copy the keys you need into the REAL site_config.json -- do not rename this file over it, it would wipe db_name/encryption_key and break the site.",
+
+  "//developer_mode": "1 in development only. It is what allows the console OTP provider to run, and what lets request_otp report which transport was used.",
+  "developer_mode": 1,
+
+  "//clinic_otp_provider": "Which transport delivers the OTP. One of: console | null | sms | whatsapp (alias: evolution). 'console' PRINTS the code to the bench log and refuses to run when developer_mode is off.",
+  "clinic_otp_provider": "whatsapp",
+
+  "//--- Evolution API (WhatsApp) ---": "Self-hosted WhatsApp bridge. No Meta template approval is involved; the code is sent as plain text from the linked WhatsApp account.",
+
+  "//clinic_evolution_url": "Base URL of the Evolution instance, no trailing slash. e.g. https://evo.example.com or http://192.168.1.20:8080",
+  "clinic_evolution_url": "https://evolution.example.com",
+
+  "//clinic_evolution_api_key": "The instance apikey. Sent in the 'apikey' header, never in a URL, so it does not end up in logs. KEEP THIS OUT OF THE MOBILE APP -- anyone holding it can send messages as your clinic.",
+  "clinic_evolution_api_key": "REPLACE_WITH_YOUR_EVOLUTION_APIKEY",
+
+  "//clinic_evolution_instance": "The instance name you created in Evolution (the one whose WhatsApp account is linked and CONNECTED).",
+  "clinic_evolution_instance": "clinic",
+
+  "//clinic_evolution_verify_number": "1 (default) checks POST /chat/whatsappNumbers/{instance} before sending, so a number with no WhatsApp is refused immediately instead of silently swallowing the code. Set 0 only if that endpoint is unavailable on your build.",
+  "clinic_evolution_verify_number": 1,
+
+  "//clinic_evolution_timeout": "Seconds to wait for Evolution, per call. Minimum 3. Keep it short -- this runs inside a web request.",
+  "clinic_evolution_timeout": 10,
+
+  "//--- SMS (alternative transport) ---": "Used when clinic_otp_provider is 'sms'. Configure the gateway in the SMS Settings doctype, not here.",
+
+  "//clinic_default_country_code": "Reserved. Phone normalisation currently pins +92 (Pakistan) in clinic_core/api/v1/phone.py.",
+
+  "//host_name": "Needed for PDF rendering; see docs. Example: http://localhost:8000",
+  "host_name": "http://localhost:8000"
+}

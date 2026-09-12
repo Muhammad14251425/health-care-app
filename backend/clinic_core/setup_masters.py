@@ -233,6 +233,84 @@ def _ensure_service_unit():
             log("attached service unit to practitioner", p)
 
 
+def _ensure_encounter_permissions():
+    """Let a Healthcare Administrator record a consultation note.
+
+    Marley ships Patient Encounter with a DocPerm for `Physician` ONLY, so an
+    admin got `403 "You are not allowed to perform this action."` from
+    doc.insert() -- even though clinic_core's own CLINICAL_ROLES lists
+    Healthcare Administrator and the mobile app offers them the screen. The
+    action was permitted at every layer except the doctype itself.
+
+    Granted through Custom DocPerm, which is Frappe's supported override: it
+    leaves the app's shipped DocPerm untouched (so a Marley upgrade cannot
+    silently revert it, and we are not patching vendor code).
+
+    This does NOT make the admin a clinician. `create_encounter` still requires
+    an explicit `practitioner`, Marley's own validation still runs, and the
+    encounter is attributed to the named doctor while `owner` records the admin
+    who typed it -- see api/v1/encounters.py.
+
+    `amend` and `cancel` are deliberately withheld: correcting a signed clinical
+    record is the clinician's call, not the front office's.
+    """
+    doctype = "Patient Encounter"
+    role = "Healthcare Administrator"
+
+    if not frappe.db.exists("DocType", doctype):
+        log("skipped encounter permissions: Marley not installed")
+        return
+    if not frappe.db.exists("Role", role):
+        log(f"skipped encounter permissions: no role {role}")
+        return
+
+    if frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
+        log(f"encounter permissions already set for {role}")
+        return
+
+    # Copy the shipped Physician row so the permlevel/if_owner semantics match,
+    # then narrow it.
+    frappe.get_doc({
+        "doctype": "Custom DocPerm",
+        "parent": doctype,
+        "parenttype": "DocType",
+        "parentfield": "permissions",
+        "role": role,
+        "permlevel": 0,
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "submit": 1,
+        "amend": 0,
+        "cancel": 0,
+        "delete": 0,
+        "report": 1,
+        "export": 0,
+        "share": 0,
+        "print": 1,
+        "email": 1,
+    }).insert(ignore_permissions=True)
+
+    # Custom DocPerm REPLACES the shipped permissions wholesale for this
+    # doctype, so Physician must be restated or doctors lose their own access.
+    if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": "Physician"}):
+        frappe.get_doc({
+            "doctype": "Custom DocPerm",
+            "parent": doctype,
+            "parenttype": "DocType",
+            "parentfield": "permissions",
+            "role": "Physician",
+            "permlevel": 0,
+            "read": 1, "write": 1, "create": 1, "submit": 1,
+            "amend": 1, "cancel": 1, "delete": 0,
+            "report": 1, "export": 1, "share": 1, "print": 1, "email": 1,
+        }).insert(ignore_permissions=True)
+        log("restated Physician permissions on Patient Encounter")
+
+    frappe.clear_cache(doctype=doctype)
+    log(f"granted {role} create/write on {doctype}")
+
+
 def run():
     frappe.set_user("Administrator")
 
@@ -301,6 +379,8 @@ def run():
     #   "Practitioner <X> does not have a Service Unit set against the
     #    Practitioner Schedule <Y>."
     _ensure_service_unit()
+
+    _ensure_encounter_permissions()
 
     frappe.db.commit()
 
