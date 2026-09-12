@@ -71,7 +71,12 @@ RUN set -eux; \
     /home/frappe/frappe-bench/env/bin/pip install --no-cache-dir --no-build-isolation -e . -v > /tmp/pip.log 2>&1 \
       || { echo "=== PIP INSTALL FAILED ==="; tail -80 /tmp/pip.log; exit 1; }; \
     /home/frappe/frappe-bench/env/bin/python -c "import clinic_core; print('import OK', clinic_core.__version__)"; \
+    # apps.txt has NO trailing newline, so a plain `>>` would weld the new entry
+    # onto the last one and Frappe would go looking for `erpnextclinic_core`.
+    # sed -i '$a\' appends a newline only when one is missing.
+    sed -i -e '$a\' /home/frappe/frappe-bench/sites/apps.txt; \
     echo "clinic_core" >> /home/frappe/frappe-bench/sites/apps.txt; \
+    echo "--- apps.txt ---"; cat -A /home/frappe/frappe-bench/sites/apps.txt; \
     cd /home/frappe/frappe-bench; \
     # Assets for every installed app. Without this the desk UI 404s on its own
     # bundles, which looks like a broken site rather than a missing build step.
