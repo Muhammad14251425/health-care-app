@@ -247,10 +247,13 @@ def _render_invoice_pdf(invoice, print_format=None):
         raise ApiError(Code.VALIDATION, _("Submit the invoice before sharing it."))
 
     try:
-        html = frappe.get_print("Sales Invoice", invoice, print_format=print_format)
-        from frappe.utils.pdf import get_pdf
+        # clinic_core.pdf, not frappe.utils.pdf directly: print HTML links the
+        # desk asset bundles by root-relative path, which wkhtmltopdf cannot
+        # resolve without a base URL and which killed every PDF on this
+        # deployment. See the module docstring there.
+        from clinic_core.pdf import print_pdf
 
-        return get_pdf(html)
+        return print_pdf("Sales Invoice", invoice, print_format=print_format)
     except (frappe.PermissionError, ApiError):
         # A caller without Sales Invoice read (e.g. a pure Physician) must get a
         # 403, not a 500 -- let the decorator translate it.
